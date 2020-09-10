@@ -146,7 +146,7 @@ void longform(char* str, int f)
     long long int total = 0;
     for(int i=0;i<n;i++){
         stat(namelist[i]->d_name, &statbuf);
-        if(namelist[i]->d_name[0]!='.'){
+        if(namelist[i]->d_name[0]!='.' || f!=-1){
             long long int m = statbuf.st_size;
             long long int k = m/4096;
             if(k*4096!=m)
