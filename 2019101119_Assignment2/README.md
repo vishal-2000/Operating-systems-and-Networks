@@ -5,9 +5,8 @@
 3. Finally use ./a.out to run the shell (No funky name used since, I was already down by then)
 4. There runs my shell in your computer, bravo!
 ## Assumptions
-1. The maximum length of file path allowed = 4096 bytes (unix/linux standard)
-2. Maximum length of any command = 4096 bytes (Unix/Linux standard)
-3. Though pinfo is said to be user defined, it wasn't clearly mentioned as to what is expected from it. Normally, user defined command '.exe' files would be stored in /bin/ folder. Since, nothing was mentioned, I just made it work like a builtin.
+1. The maximum length of file path allowed = 4096 bytes (unix/linux standard), if the length is maxed out then filename too long error is recieved(just like any other shell)
+2. Though pinfo is said to be user defined, it wasn't clearly mentioned as to what is expected from it. Normally, user defined command '.exe' files would be stored in /bin/ folder. Since, nothing was mentioned, I just made it work like a builtin.
 ## Code files
 1. cd command - chdir.c
 2. pwd command - run_builtin.c
