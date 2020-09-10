@@ -68,7 +68,7 @@ int run_syscom(char* str1, char* str2) // returns pid of background process retu
         else 
         {
             int stat;
-			wait(&stat);
+			waitpid(childPid, &stat, WUNTRACED);
         }
         free(args);
         return 0;	
