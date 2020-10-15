@@ -1,0 +1,2 @@
+# Assumptions
+1) Each pharma company takes random amount of time each time it has to produce a batch of vaccines(eg. pharma company A produces first batch in 4 sec, while the second batch in 2sec and third batch in 5 sec etc.)
