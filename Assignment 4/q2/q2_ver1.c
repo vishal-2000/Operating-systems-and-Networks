@@ -35,7 +35,7 @@ short int* flags_between_studs_vaczones;
 //static int slots_ready_for_allotment;
 
 // ---------------------------------------------------------->  mutex locks and conditional variables
-pthread_mutex_t lock_pharma_com, lock_vac_zon, lock_stud, lock_screen, lock_rand, lock_wait_stud, lock_slot_update, lock_slot_update2;
+pthread_mutex_t lock_pharma_com, lock_vac_zon, lock_stud, lock_screen, lock_rand, lock_wait_stud, lock_slot_update;
 
 // ---------------------------------------------------------------> function declarations
 int initiate_prog(int n, int m, int o);
@@ -182,10 +182,6 @@ int initiate_prog(int n, int m, int o){ //--------------------------------------
         perror("Mutex init has failed"); 
         return -1; 
     }
-    if (pthread_mutex_init(&lock_slot_update2, NULL) != 0) { // initializing the lock
-        perror("Mutex init has failed"); 
-        return -1; 
-    }
     /*if (pthread_mutex_init(&lock_batch_update, NULL) != 0) { // initializing the lock
         perror("Mutex init has failed"); 
         return -1; 
@@ -242,12 +238,12 @@ void* pharma_com(void* a){// ---------------------------------------------------
         int x = rand()%4 + 2; // sleep time (prep time)
         pthread_mutex_unlock(&lock_rand);
         pthread_mutex_lock(&lock_screen);
-        printf("\033[01;34m");
+        printf("\033[0;34m");
         printf("Pharmaceutical Company %d is preparing %d batches of vaccine which have success probability %0.3f\n", id+1, a, succ_proba_pharma[id]);
         pthread_mutex_unlock(&lock_screen);
         sleep(x); // preparation (or sleeping here)
         pthread_mutex_lock(&lock_screen);
-        printf("\033[01;34m");
+        printf("\033[0;34m");
         printf("Pharmaceutical Company %d has prepared %d batches of vaccine which have success probability %0.3f. Waiting for all the vaccines to be used to resume production\n", id+1, a, succ_proba_pharma[id]);
         pthread_mutex_unlock(&lock_screen);
         batches_ready[id] = a; // batches from 1 to 5
@@ -266,105 +262,84 @@ void* vaccination_zone(void* a){ // --------------------------------------------
     int company_id_batch = -1;
     while(terminate==0)
     {
-        if(terminate==1) return NULL;
+        if(terminate==1) break;
         int batch_ass = -1;
 
-        if(remaining_vaccines==0){
+        while(remaining_vaccines==0 && terminate==0){
             for(int i=0;i<n;i++){
-                if(terminate==1) return NULL;
-                pthread_mutex_lock(&lock_vac_zon);
-                if(batches_ready[i] <= 0){
-                    pthread_mutex_unlock(&lock_vac_zon);
-                    if(i==n-1) i =-1;
-                    continue;
-                }
-                else{
+                if(batches_ready[i] > 0){
+                    pthread_mutex_lock(&lock_vac_zon);
+                    if(batches_ready[i]==0){
+                        pthread_mutex_unlock(&lock_vac_zon);
+                        continue;
+                    }
                     company_id_batch = i; //(i+1 actual id)
                     remaining_vaccines = vac_per_batch[i];
                     batches_runnin[i]++;
                     batches_ready[company_id_batch]--; // synchronization
-                    pthread_mutex_lock(&lock_screen);
-
-                    printf("\033[01;34m");
-                    printf("Pharmaceutical Company %d is delivering a vaccine batch to Vaccination Zone %d which has success probability %0.3f\n", company_id_batch+1, id+1, succ_proba_pharma[company_id_batch]);
-                    printf("\033[01;34m");
-                    printf("Pharmaceutical company %d delivered a vaccine batch to Vaccination zone %d, resuming vaccinations now\n", company_id_batch+1, id+1);
-                    printf("No of vaccines delivered in total=%d\n", remaining_vaccines);
-                    pthread_mutex_unlock(&lock_screen);
-
                     pthread_mutex_unlock(&lock_vac_zon);
                     break;
                 }
+                if(i==n-1)
+                    i = -1;// start from i=0 again
+            }
+            if(remaining_vaccines!=0){
+                pthread_mutex_lock(&lock_screen);
+                printf("\033[0;34m");
+                printf("Pharmaceutical Company %d is delivering a vaccine batch to Vaccination Zone %d which has success probability %0.3f\n", company_id_batch+1, id+1, succ_proba_pharma[company_id_batch]);
+                printf("\033[0;34m");
+                printf("Pharmaceutical company %d delivered a vaccine batch to Vaccination zone %d, resuming vaccinations now\n", company_id_batch+1, id+1);
+                printf("No of vaccines delivered in total=%d\n", remaining_vaccines);
+                pthread_mutex_unlock(&lock_screen);
             }
         }
 
         succ_proba_vaczon[id] = succ_proba_pharma[company_id_batch];
 
-        if(terminate==1) return NULL;
+        if(terminate==1) break;
 
         flags_between_studs_vaczones[id] = 0;
-        int no_of_slots = 5;
-        //pthread_mutex_lock(&lock_stud);
-        //if(remaining_vaccines>1 && no_of_studs_waiting>1){
-            //pthread_mutex_unlock(&lock_stud);
+        int no_of_slots = 1;
+        if(remaining_vaccines>1 && no_of_studs_waiting>1){
             pthread_mutex_lock(&lock_rand);
             int e = rand();
             pthread_mutex_unlock(&lock_rand);
-            no_of_slots = e%(minimum(8, o, remaining_vaccines)) + 1;
-        //}
+            no_of_slots = e%(minimum(8, no_of_studs_waiting, remaining_vaccines)) + 1;
+        }
         pthread_mutex_lock(&lock_screen);
-        printf("\033[01;33m");
+        printf("\033[0;33m");
         printf("Vaccination Zone %d is ready to vaccinate with %d slots, waiting list=%d \n", id+1, no_of_slots, no_of_studs_waiting);
         pthread_mutex_unlock(&lock_screen);
-
-        pthread_mutex_lock(&lock_stud);
-        //printf("Why are u not comin out-2\n");
         slots_available[id] = no_of_slots;
-        pthread_mutex_unlock(&lock_stud);
-
-        //printf("Why are u not comin out-1\n");
         
-        while(1){
-            //printf("Why are u not comin out0\n");
-            pthread_mutex_lock(&lock_stud);
-            if(terminate == 1){
-                //printf("Why are u not comin out1\n");
-                pthread_mutex_unlock(&lock_stud);
-                return NULL;
-            }
-            if(slots_filled[id] >0 && no_of_studs_waiting==0){
-                //printf("Why are u not comin out2\n");
-                break;
-            }
-            if(slots_filled[id]>0 && slots_filled[id]==no_of_slots){
-                //printf("Why are u not comin out3\n");
-                break;
-            }
-            pthread_mutex_unlock(&lock_stud);
+        while((slots_filled[id]<=0 && no_of_studs_waiting!=0) && terminate==0){
         }
-        //pthread_mutex_lock(&lock_stud);
+        while(slots_filled[id]!=no_of_slots && no_of_studs_waiting!=0  && terminate==0){
+        }
         remaining_vaccines = remaining_vaccines - slots_filled[id];
         slots_available[id] = 0;
         pthread_mutex_lock(&lock_screen);
-        printf("\033[01;33m");
+        printf("\033[0;33m");
         /*printf("Slots filled:%d\n", slots_filled[id]);
         printf("Slots available:%d\n", slots_available[id]);*/
         printf("Vaccination Zone %d entering Vaccination Phase with %d students\n", id+1, slots_filled[id]);
         pthread_mutex_unlock(&lock_screen);
         flags_between_studs_vaczones[id] = 1; // start vacccination
-        pthread_mutex_unlock(&lock_stud);
         while(slots_filled[id]>0);
+        /*pthread_mutex_lock(&lock_screen);
+        printf("\033[0;33m");
+        printf("Vaccination Zone %d slots filled=%d\n", id+1, slots_filled[id]);
+        pthread_mutex_unlock(&lock_screen);*/
         flags_between_studs_vaczones[id] = 0; // end vaccination
         pthread_mutex_lock(&lock_screen);
-        printf("\033[01;33m");
+        printf("\033[0;33m");
         printf("Vaccination Zone %d vaccination phase completed\n", id+1);
-        //printf("batches runnin %d\n", batches_runnin[company_id_batch]);
-        //printf("batches ready %d\n", batches_ready[company_id_batch]);
+        printf("batches runnin %d\n", batches_runnin[company_id_batch]);
+        printf("batches ready %d\n", batches_ready[company_id_batch]);
         pthread_mutex_unlock(&lock_screen);
         if(remaining_vaccines==0){
-            batches_runnin[company_id_batch]--;
             pthread_mutex_lock(&lock_screen);
-            printf("\033[01;33m");
+            printf("\033[0;33m");
             printf("Vaccination Zone %d has run out of vaccines\n", id+1);
             pthread_mutex_unlock(&lock_screen);
         }
@@ -387,55 +362,51 @@ void* student(void* a){
     short int flag = -1;
     for(int i=0;i<3;i++){
         pthread_mutex_lock(&lock_screen);
-        printf("\033[01;36m"); // magenta
+        printf("\033[0;36m"); // cyan
         printf("Student %d has arrived for his round number %d of Vaccination\n", id+1, i+1);
         pthread_mutex_unlock(&lock_screen);
         pthread_mutex_lock(&lock_screen);
-        printf("\033[01;36m"); // magenta
+        printf("\033[0;36m"); // cyan
         printf("Student %d is waiting to be allocated a slot on a Vaccination Zone\n", id+1);
         pthread_mutex_unlock(&lock_screen);
 
-        pthread_mutex_lock(&lock_stud);
+        pthread_mutex_lock(&lock_wait_stud);
         no_of_studs_waiting++;
-        pthread_mutex_unlock(&lock_stud);
+        pthread_mutex_unlock(&lock_wait_stud);
         /*if(i==2){
                 pthread_mutex_lock(&lock_screen);
-                printf("\033[01;36m"); // magenta
+                printf("\033[0;36m"); // cyan
                 printf("Student %d and Students waiting=%d\n", id+1, no_of_studs_waiting);
                 pthread_mutex_unlock(&lock_screen);
             }*/
-        //printf("Hey are u here!\n");
         int vaczon_id = -1;
         for(int j=0;j<m;j++){
-            //printf("Hey are u here!\n");
-            pthread_mutex_lock(&lock_stud);
             if(slots_available[j] > 0  && flags_between_studs_vaczones[j]==0){
-                vaczon_id = j;
-                pthread_mutex_lock(&lock_screen);
-                printf("\033[01;36m");
-                printf("Student %d assigned a slot on the Vaccination Zone %d and waiting to be vaccinated\n", id+1, vaczon_id+1);
-                pthread_mutex_unlock(&lock_screen);
-                slots_available[j]--;
-                slots_filled[j]++;
+                pthread_mutex_lock(&lock_stud);
+                if(slots_available[j] > 0  && flags_between_studs_vaczones[j]==0){
+                    vaczon_id = j;
+                    pthread_mutex_lock(&lock_screen);
+                    printf("\033[0;36m");
+                    printf("Student %d assigned a slot on the Vaccination Zone %d and waiting to be vaccinated\n", id+1, vaczon_id+1);
+                    pthread_mutex_unlock(&lock_screen);
+                    slots_available[j]--;
+                    slots_filled[j]++;
+                }
+                else{
+                    pthread_mutex_unlock(&lock_stud);
+                    continue;
+                }
+                pthread_mutex_unlock(&lock_stud);
+                pthread_mutex_lock(&lock_wait_stud);
                 no_of_studs_waiting--;
-                pthread_mutex_unlock(&lock_stud);
-                break;
+                pthread_mutex_unlock(&lock_wait_stud);
             }
-            else{
-                pthread_mutex_unlock(&lock_stud);
-                if(j==m-1) j = -1; // restart searching
-                continue;
-            }
+            if(vaczon_id>=0) break;
+            if(j==m-1) j = -1; // restart searching
         }
+        while(flags_between_studs_vaczones[vaczon_id] ==0);
         pthread_mutex_lock(&lock_screen);
-        printf("\033[01;36m");
-        printf("Student %d waiting here for %d\n", id+1, vaczon_id+1);
-        pthread_mutex_unlock(&lock_screen);
-        while(flags_between_studs_vaczones[vaczon_id] ==0){
-
-        }
-        pthread_mutex_lock(&lock_screen);
-        printf("\033[01;36m");
+        printf("\033[0;36m");
         printf("Student %d on Vaccination Zone %d has been vaccinated which has success probability %0.3f\n", id+1, vaczon_id+1, succ_proba_vaczon[vaczon_id]);
         pthread_mutex_unlock(&lock_screen);
         // Anti body test
@@ -445,37 +416,31 @@ void* student(void* a){
         x = x/1000;
         if(x <= succ_proba_vaczon[vaczon_id]){ // test success
             pthread_mutex_lock(&lock_screen);
-            printf("\033[01;36m");
+            printf("\033[0;36m");
             printf("Student %d has tested POSITIVE for antibodies and finally goes to college\n", id+1);
             pthread_mutex_unlock(&lock_screen);
-            pthread_mutex_lock(&lock_stud);
+            pthread_mutex_lock(&lock_slot_update);
             slots_filled[vaczon_id]--;
-            pthread_mutex_unlock(&lock_stud);
+            pthread_mutex_unlock(&lock_slot_update);
             flag = 1;
             break;
         }
         else{ // test failed
             pthread_mutex_lock(&lock_screen);
-            printf("\033[01;36m");
+            printf("\033[0;36m");
             printf("Student %d has tested NEGITIVE for antibodies.\n", id+1);
             pthread_mutex_unlock(&lock_screen);
-            pthread_mutex_lock(&lock_stud);
+            pthread_mutex_lock(&lock_slot_update);
             slots_filled[vaczon_id]--;
-            pthread_mutex_unlock(&lock_stud);
+            pthread_mutex_unlock(&lock_slot_update);
             if(i==2)
                 break;
         }
     }
     if(flag==-1){
         pthread_mutex_lock(&lock_screen);
-        printf("\033[01;36m");
+        printf("\033[0;36m");
         printf("Student %d is sent back to home due failed vaccination\n", id+1);
-        pthread_mutex_unlock(&lock_screen);
-    }
-    else{
-        pthread_mutex_lock(&lock_screen);
-        printf("\033[01;36m");
-        printf("Student %d approved and hence registered fo offline classes\n", id+1);
         pthread_mutex_unlock(&lock_screen);
     }
 }
